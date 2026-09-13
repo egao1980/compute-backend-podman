@@ -1,0 +1,108 @@
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  SBCL_VERSION: 2.6.7
+  ROSWELL_VERSION: "26.02.116"
+  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+jobs:
+  test:
+    uses: egao1980/cl-repository/.github/workflows/test-system.yml@main
+
+  test-abcl:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: egao1980/cl-repository/.github/actions/setup-lisp@main
+        with:
+          install-sbcl: "false"
+          roswell-version: ${{ env.ROSWELL_VERSION }}
+      - name: Install ABCL
+        shell: bash
+        run: |
+          ros install abcl-bin
+          ros use abcl-bin
+      - name: Install JNA (CFFI on ABCL)
+        shell: bash
+        run: |
+          JNA_VER=5.14.0
+          mkdir -p "$HOME/jna"
+          curl -fsSL -o "$HOME/jna/jna-${JNA_VER}.jar" \
+            "https://repo1.maven.org/maven2/net/java/dev/jna/jna/${JNA_VER}.jar"
+          curl -fsSL -o "$HOME/jna/jna-platform-${JNA_VER}.jar" \
+            "https://repo1.maven.org/maven2/net/java/dev/jna/jna-platform/${JNA_VER}/jna-platform-${JNA_VER}.jar"
+          {
+            echo "CLASSPATH=$HOME/jna/jna-${JNA_VER}.jar:$HOME/jna/jna-platform-${JNA_VER}.jar${CLASSPATH:+:$CLASSPATH}"
+            echo "JAVA_TOOL_OPTIONS=--enable-native-access=ALL-UNNAMED --add-opens=java.base/java.lang=ALL-UNNAMED --add-opens=java.base/java.io=ALL-UNNAMED ${JAVA_TOOL_OPTIONS:-}"
+          } >> "$GITHUB_ENV"
+      - uses: egao1980/cl-repository/.github/actions/ci@main
+        with:
+          phase: install
+      - uses: egao1980/cl-repository/.github/actions/ci@main
+        with:
+          phase: test
+
+  test-ecl:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v5
+      - uses: egao1980/cl-repository/.github/actions/setup-lisp@main
+        with:
+          install-sbcl: "false"
+          roswell-version: ${{ env.ROSWELL_VERSION }}
+      - name: Install ECL
+        shell: bash
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends build-essential libffi-dev libgc-dev libgmp-dev
+          ros install ecl
+          ros use ecl
+      - uses: egao1980/cl-repository/.github/actions/ci@main
+        with:
+          phase: install
+      - uses: egao1980/cl-repository/.github/actions/ci@main
+        with:
+          phase: test
+
+  test-ccl:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+      - uses: egao1980/cl-repository/.github/actions/setup-lisp@main
+        with:
+          install-sbcl: "false"
+          roswell-version: ${{ env.ROSWELL_VERSION }}
+      - name: Install CCL
+        shell: bash
+        run: |
+          ros install ccl-bin
+          ros use ccl-bin
+      - uses: egao1980/cl-repository/.github/actions/ci@main
+        with:
+          phase: install
+      - uses: egao1980/cl-repository/.github/actions/ci@main
+        with:
+          phase: test
