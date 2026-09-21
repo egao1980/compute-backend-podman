@@ -23,6 +23,12 @@ Unit tests cover the argv builder only — podman does not need to be installed.
 ;;    "--timeout" "5" "-v" "/tmp/ws:/tmp/ws:ro" "alpine:latest" "echo" "hi")
 ```
 
+Offline demo (`assert-egress-allowed` + argv, no Podman process):
+
+```bash
+sbcl --load examples/egress.lisp
+```
+
 Kata / firecracker runtime is a podman config, not a second backend.
 
 ## License
