@@ -2,7 +2,9 @@
 
 Rootless **podman** backend for [`compute-protocol`](https://github.com/egao1980/compute-protocol).
 
-Builds `podman run` argv (`--network none` unless granted, `--memory`, `--cpus`, `-v src:dst:ro`, `--timeout`) and drives it via `process-protocol` when `*process-backend*` is bound, else UIOP.
+Builds `podman run` argv (`--network none` unless `:allow`, `--memory`, `--cpus`, `-v src:dst:ro`, `--timeout`) and drives it via `process-protocol` when `*process-backend*` is bound, else UIOP.
+
+A `sandbox-network-policy` still starts with `--network none` plus annotation `compute-protocol.egress-proxy=1`. **Podman/CNI do not enforce host/port.** A sidecar proxy must call `assert-egress-allowed` (host equal or `"*"`, port equal) before opening a connection; `:allow` permits any destination. `podman-egress-proxy-needed-p` is T when the spec carries a policy.
 
 Unit tests cover the argv builder only — podman does not need to be installed.
 

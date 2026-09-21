@@ -1,5 +1,5 @@
 (defsystem "compute-backend-podman"
-  :version "0.1.0"
+  :version "0.2.0"
   :description "Podman backend for compute-protocol (rootless podman run argv)"
   :author "egao1980"
   :license "MIT"

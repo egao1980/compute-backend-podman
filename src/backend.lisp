@@ -46,18 +46,65 @@ process-protocol when *process-backend* is bound, else UIOP."))
       (default-image default-image)
       (t "sbcl"))))
 
+(defun podman-egress-proxy-needed-p (spec)
+  "T when SPEC carries a SANDBOX-NETWORK-POLICY (sidecar proxy required).
+CNI / `--network none` do not enforce host/port."
+  (compute-protocol:sandbox-network-policy-p
+   (compute-protocol:sandbox-spec-network
+    (compute-protocol:coerce-sandbox-spec spec))))
+
+(defun assert-egress-allowed (spec host port)
+  "Signal COMPUTE-PROTOCOL:SANDBOX-DENIED unless SPEC allows HOST:PORT.
+
+:allow permits any destination. A SANDBOX-NETWORK-POLICY matches when an
+egress rule has host equal to HOST or \"*\" and port equal to PORT.
+:none and unmatched rules are denied. CNI does not enforce this — a
+sidecar proxy must call this helper before opening a connection."
+  (check-type host string)
+  (check-type port integer)
+  (let* ((spec (compute-protocol:coerce-sandbox-spec spec))
+         (network (compute-protocol:sandbox-spec-network spec)))
+    (cond
+      ((eq network :allow)
+       t)
+      ((compute-protocol:sandbox-network-policy-p network)
+       (unless (some (lambda (rule)
+                       (and (or (string= (compute-protocol:egress-rule-host rule) host)
+                                (string= (compute-protocol:egress-rule-host rule) "*"))
+                            (= (compute-protocol:egress-rule-port rule) port)))
+                     (compute-protocol:sandbox-network-policy-egress network))
+         (error 'compute-protocol:sandbox-denied
+                :spec spec
+                :policy :egress
+                :message (format nil "egress to ~a:~a is not allowed" host port)))
+       t)
+      (t
+       (error 'compute-protocol:sandbox-denied
+              :spec spec
+              :policy :egress
+              :message (format nil "egress to ~a:~a is not allowed" host port))))))
+
 (defun podman-argv (spec &key default-image)
-  "Build `podman run` argv for SPEC. Does not invoke podman."
+  "Build `podman run` argv for SPEC. Does not invoke podman.
+
+:none and a SANDBOX-NETWORK-POLICY start with `--network none`. :allow
+omits that flag. A policy also adds annotation
+`compute-protocol.egress-proxy=1` as a marker for a sidecar that must
+call ASSERT-EGRESS-ALLOWED. Podman/CNI do not filter host/port."
   (let* ((spec (compute-protocol:coerce-sandbox-spec spec))
          (image (%image spec default-image))
+         (network (compute-protocol:sandbox-spec-network spec))
          (acc '()))
     (flet ((add (x) (push x acc)))
       (add "podman")
       (add "run")
       (add "--rm")
-      (unless (eq (compute-protocol:sandbox-spec-network spec) :allow)
+      (unless (eq network :allow)
         (add "--network")
         (add "none"))
+      (when (compute-protocol:sandbox-network-policy-p network)
+        (add "--annotation")
+        (add "compute-protocol.egress-proxy=1"))
       (let ((mem (compute-protocol:sandbox-spec-memory-limit spec)))
         (when mem
           (add "--memory")
