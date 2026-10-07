@@ -25,19 +25,27 @@ process-protocol when *process-backend* is bound, else UIOP."))
     (string key)
     (symbol (symbol-name key))))
 
+(defun %container-path (x)
+  "Container-side path: always POSIX, whatever the host (podman on Windows takes
+   a native host path but the destination is inside a Linux VM)."
+  (etypecase x
+    (string x)
+    (pathname (namestring x))
+    (symbol (string x))))
+
 (defun mount-volume-arg (mount)
-  "Turn a mount designator into `src:dst:ro`."
-  (cond
-    ((or (pathnamep mount) (stringp mount))
-     (let ((p (%namestring mount)))
-       (format nil "~a:~a:ro" p p)))
-    ((and (consp mount) (consp (cdr mount)) (null (cddr mount)))
-     (format nil "~a:~a:ro" (%namestring (first mount)) (%namestring (second mount))))
-    ((and (consp mount) (atom (cdr mount)))
-     (format nil "~a:~a:ro" (%namestring (car mount)) (%namestring (cdr mount))))
-    (t
-     (let ((p (%namestring mount)))
-       (format nil "~a:~a:ro" p p)))))
+  "Turn a mount designator into `src:dst:ro` — host-native src, POSIX dst."
+  (flet ((arg (src dst)
+           (format nil "~a:~a:ro" (%namestring src) (%container-path dst))))
+    (cond
+      ((or (pathnamep mount) (stringp mount))
+       (arg mount mount))
+      ((and (consp mount) (consp (cdr mount)) (null (cddr mount)))
+       (arg (first mount) (second mount)))
+      ((and (consp mount) (atom (cdr mount)))
+       (arg (car mount) (cdr mount)))
+      (t
+       (arg mount mount)))))
 
 (defun %image (spec default-image)
   (let ((rt (compute-protocol:sandbox-spec-runtime spec)))

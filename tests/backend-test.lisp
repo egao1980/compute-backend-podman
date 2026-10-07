@@ -35,9 +35,12 @@
     (ng (%has-seq argv '("--network" "none")))))
 
 (deftest mount-volume-arg-pairs
-  (ok (string= "/src:/dst:ro"
+  ;; Host side is native (\src on Windows); container side stays POSIX.
+  (ok (string= (format nil "~a:/dst:ro" (uiop:native-namestring #p"/src"))
                (compute-backend-podman:mount-volume-arg
-                (list #p"/src" #p"/dst")))))
+                (list #p"/src" #p"/dst"))))
+  (ok (string= (format nil "~a:/tmp/ws:ro" (uiop:native-namestring #p"/tmp/ws"))
+               (compute-backend-podman:mount-volume-arg #p"/tmp/ws"))))
 
 (defun %example-policy ()
   (compute-protocol:make-sandbox-network-policy
