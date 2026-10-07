@@ -1,5 +1,5 @@
 (defsystem "compute-backend-podman"
-  :version "0.1.0"
+  :version "0.2.0"
   :description "Podman backend for compute-protocol (rootless podman run argv)"
   :author "egao1980"
   :license "MIT"
@@ -15,7 +15,8 @@
   :pathname "tests"
   :serial t
   :components ((:file "package")
-               (:file "backend-test"))
+               (:file "backend-test")
+               (:file "demo-test"))
   :perform (test-op (o c)
              (unless (symbol-call :rove :run c)
                (error "tests failed for ~A" (component-name c)))))

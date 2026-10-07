@@ -43,7 +43,7 @@ jobs:
           JNA_VER=5.14.0
           mkdir -p "$HOME/jna"
           curl -fsSL -o "$HOME/jna/jna-${JNA_VER}.jar" \
-            "https://repo1.maven.org/maven2/net/java/dev/jna/jna/${JNA_VER}.jar"
+            "https://repo1.maven.org/maven2/net/java/dev/jna/jna/${JNA_VER}/jna-${JNA_VER}.jar"
           curl -fsSL -o "$HOME/jna/jna-platform-${JNA_VER}.jar" \
             "https://repo1.maven.org/maven2/net/java/dev/jna/jna-platform/${JNA_VER}/jna-platform-${JNA_VER}.jar"
           {

@@ -5,6 +5,8 @@
            #:make-podman-compute-backend
            #:use-podman-compute-backend
            #:podman-argv
-           #:mount-volume-arg))
+           #:mount-volume-arg
+           #:podman-egress-proxy-needed-p
+           #:assert-egress-allowed))
 
 (in-package #:compute-backend-podman)

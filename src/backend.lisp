@@ -25,19 +25,27 @@ process-protocol when *process-backend* is bound, else UIOP."))
     (string key)
     (symbol (symbol-name key))))
 
+(defun %container-path (x)
+  "Container-side path: always POSIX, whatever the host (podman on Windows takes
+   a native host path but the destination is inside a Linux VM)."
+  (etypecase x
+    (string x)
+    (pathname (namestring x))
+    (symbol (string x))))
+
 (defun mount-volume-arg (mount)
-  "Turn a mount designator into `src:dst:ro`."
-  (cond
-    ((or (pathnamep mount) (stringp mount))
-     (let ((p (%namestring mount)))
-       (format nil "~a:~a:ro" p p)))
-    ((and (consp mount) (consp (cdr mount)) (null (cddr mount)))
-     (format nil "~a:~a:ro" (%namestring (first mount)) (%namestring (second mount))))
-    ((and (consp mount) (atom (cdr mount)))
-     (format nil "~a:~a:ro" (%namestring (car mount)) (%namestring (cdr mount))))
-    (t
-     (let ((p (%namestring mount)))
-       (format nil "~a:~a:ro" p p)))))
+  "Turn a mount designator into `src:dst:ro` — host-native src, POSIX dst."
+  (flet ((arg (src dst)
+           (format nil "~a:~a:ro" (%namestring src) (%container-path dst))))
+    (cond
+      ((or (pathnamep mount) (stringp mount))
+       (arg mount mount))
+      ((and (consp mount) (consp (cdr mount)) (null (cddr mount)))
+       (arg (first mount) (second mount)))
+      ((and (consp mount) (atom (cdr mount)))
+       (arg (car mount) (cdr mount)))
+      (t
+       (arg mount mount)))))
 
 (defun %image (spec default-image)
   (let ((rt (compute-protocol:sandbox-spec-runtime spec)))
@@ -46,18 +54,65 @@ process-protocol when *process-backend* is bound, else UIOP."))
       (default-image default-image)
       (t "sbcl"))))
 
+(defun podman-egress-proxy-needed-p (spec)
+  "T when SPEC carries a SANDBOX-NETWORK-POLICY (sidecar proxy required).
+CNI / `--network none` do not enforce host/port."
+  (compute-protocol:sandbox-network-policy-p
+   (compute-protocol:sandbox-spec-network
+    (compute-protocol:coerce-sandbox-spec spec))))
+
+(defun assert-egress-allowed (spec host port)
+  "Signal COMPUTE-PROTOCOL:SANDBOX-DENIED unless SPEC allows HOST:PORT.
+
+:allow permits any destination. A SANDBOX-NETWORK-POLICY matches when an
+egress rule has host equal to HOST or \"*\" and port equal to PORT.
+:none and unmatched rules are denied. CNI does not enforce this — a
+sidecar proxy must call this helper before opening a connection."
+  (check-type host string)
+  (check-type port integer)
+  (let* ((spec (compute-protocol:coerce-sandbox-spec spec))
+         (network (compute-protocol:sandbox-spec-network spec)))
+    (cond
+      ((eq network :allow)
+       t)
+      ((compute-protocol:sandbox-network-policy-p network)
+       (unless (some (lambda (rule)
+                       (and (or (string= (compute-protocol:egress-rule-host rule) host)
+                                (string= (compute-protocol:egress-rule-host rule) "*"))
+                            (= (compute-protocol:egress-rule-port rule) port)))
+                     (compute-protocol:sandbox-network-policy-egress network))
+         (error 'compute-protocol:sandbox-denied
+                :spec spec
+                :policy :egress
+                :message (format nil "egress to ~a:~a is not allowed" host port)))
+       t)
+      (t
+       (error 'compute-protocol:sandbox-denied
+              :spec spec
+              :policy :egress
+              :message (format nil "egress to ~a:~a is not allowed" host port))))))
+
 (defun podman-argv (spec &key default-image)
-  "Build `podman run` argv for SPEC. Does not invoke podman."
+  "Build `podman run` argv for SPEC. Does not invoke podman.
+
+:none and a SANDBOX-NETWORK-POLICY start with `--network none`. :allow
+omits that flag. A policy also adds annotation
+`compute-protocol.egress-proxy=1` as a marker for a sidecar that must
+call ASSERT-EGRESS-ALLOWED. Podman/CNI do not filter host/port."
   (let* ((spec (compute-protocol:coerce-sandbox-spec spec))
          (image (%image spec default-image))
+         (network (compute-protocol:sandbox-spec-network spec))
          (acc '()))
     (flet ((add (x) (push x acc)))
       (add "podman")
       (add "run")
       (add "--rm")
-      (unless (eq (compute-protocol:sandbox-spec-network spec) :allow)
+      (unless (eq network :allow)
         (add "--network")
         (add "none"))
+      (when (compute-protocol:sandbox-network-policy-p network)
+        (add "--annotation")
+        (add "compute-protocol.egress-proxy=1"))
       (let ((mem (compute-protocol:sandbox-spec-memory-limit spec)))
         (when mem
           (add "--memory")
