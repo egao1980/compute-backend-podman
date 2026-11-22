@@ -91,6 +91,11 @@
 (deftest missing-podman-is-compute-error
   (let ((b (compute-backend-podman:make-podman-compute-backend
             :program "/nonexistent/podman-for-tests")))
-    (ok (signals (compute-protocol:run-sandboxed b (%spec :command '("true") :runtime "x"))
-                 'compute-protocol:compute-error))
+    ;; SBCL fails at spawn (COMPUTE-ERROR); ECL / CCL spawn and exit non-zero.
+    (ok (handler-case
+            (let ((r (compute-protocol:run-sandboxed
+                      b (%spec :command '("true") :runtime "x"))))
+              (not (eql 0 (compute-protocol:sandbox-result-exit-code r))))
+          (compute-protocol:compute-error () t))
+        "a missing podman is a COMPUTE-ERROR or a failed run")
     (ng (compute-backend-podman:podman-available-p b))))
