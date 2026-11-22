@@ -16,6 +16,37 @@ jobs:
   test:
     uses: egao1980/cl-repository/.github/workflows/test-system.yml@main
 
+  # Live lane: the ubuntu VM (not the ci-base container) has podman. The
+  # image is pulled here so the tests never touch the network;
+  # COMPUTE_PODMAN_LIVE=require makes a blocked lane fail instead of skip.
+  test-podman-live:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    timeout-minutes: 60
+    env:
+      COMPUTE_PODMAN_LIVE: require
+      COMPUTE_PODMAN_TEST_IMAGE: docker.io/library/alpine:3.20
+    steps:
+      - uses: actions/checkout@v5
+      - name: Podman and the test image
+        shell: bash
+        run: |
+          podman --version
+          podman info --format '{{.Host.OS}} rootless={{.Host.Security.Rootless}}'
+          podman pull -q "$COMPUTE_PODMAN_TEST_IMAGE"
+      - uses: egao1980/cl-repository/.github/actions/setup-lisp@main
+        with:
+          sbcl-version: ${{ env.SBCL_VERSION }}
+          roswell-version: ${{ env.ROSWELL_VERSION }}
+      - uses: egao1980/cl-repository/.github/actions/ci@main
+        with:
+          phase: install
+      - uses: egao1980/cl-repository/.github/actions/ci@main
+        with:
+          phase: test
+
   test-abcl:
     runs-on: ubuntu-latest
     permissions:
