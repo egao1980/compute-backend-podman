@@ -1,9 +1,11 @@
 (defsystem "compute-backend-podman"
-  :version "0.2.0"
-  :description "Podman backend for compute-protocol (rootless podman run argv)"
+  :version "0.3.0"
+  :description "Podman backend for compute-protocol (rootless podman run, warm sessions on podman exec, cp, build)"
   :author "egao1980"
   :license "MIT"
-  :depends-on ("compute-protocol")
+  :depends-on ((:version "compute-protocol" "0.4.0")
+               (:version "process-protocol" "0.4.1")
+               (:version "process-backend-uiop" "0.3.1"))
   :serial t
   :pathname "src"
   :components ((:file "package")
@@ -16,6 +18,8 @@
   :serial t
   :components ((:file "package")
                (:file "backend-test")
+               (:file "session-test")      ; 0.3.0 argv: open / exec / rm / cp / build
+               (:file "live-test")         ; gated on `podman info` + a local image
                (:file "demo-test"))
   :perform (test-op (o c)
              (unless (symbol-call :rove :run c)
